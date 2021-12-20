@@ -42,6 +42,7 @@ the whole transaction MUST fail.
          Some (a) -> a | None -> Set.empty
       in if Set.mem sender_ authorized then ()
       else failwith Errors.not_operator
+
 end
 
 (* The type of the storage is not provided in the TZIP-12.
@@ -233,7 +234,27 @@ let transfer : transfer -> storage -> operation list * storage =
    let s = Storage.update_ledger s ledger in
    ([]: operation list),s
 
-(** balance_of entrypoint *)
+(** balance_of entrypoint 
+(pair %balance_of
+  (list %requests
+    (pair
+      (address %owner)
+      (nat %token_id)
+    )
+  )
+  (contract %callback
+    (list
+      (pair
+        (pair %request
+          (address %owner)
+          (nat %token_id)
+        )
+        (nat %balance)
+      )
+    )
+  )
+)
+*)
 type request = {
    owner    : address;
    token_id : nat;
@@ -248,16 +269,52 @@ type callback = [@layout:comb] {
 (*Empty batch is a valid input and MUST be processed as a non-empty one.
 For example, an empty transfer batch will not affect token balances, but applicable
 transfer core behavior and permission policy MUST be applied. *)
-
 type balance_of = [@layout:comb] {
    requests : request list;
    callback : callback list contract;
 }
 
+(** 
+Gets the balance of multiple account/token pairs. Accepts a list of
+balance_of_requests and a callback contract callback which accepts a list of
+balance_of_response records.
+
+
+There may be duplicate balance_of_request's, in which case they should not be
+deduplicated nor reordered.
+
+
+If the account does not hold any tokens, the account
+balance is interpreted as zero.
+
+
+If one of the specified token_ids is not defined within the FA2 contract, the
+entrypoint MUST fail with the error mnemonic "FA2_TOKEN_UNDEFINED".
+
+
+Notice: The balance_of entrypoint implements a continuation-passing style (CPS)
+view entrypoint pattern that invokes the other callback contract with the requested
+data. This pattern, when not used carefully, could expose the callback contract
+to an inconsistent state and/or manipulatable outcome (see
+view patterns).
+The balance_of entrypoint should be used on the chain with extreme caution.
+*)
+
 (* Invocation of the balance_of entrypoint with an empty batch input MUST result in a call to a
 callback contract with an empty response batch. *)
 let balance_of : balance_of -> storage -> operation list * storage = 
-   fun (p: balance_of) (s: storage) -> ([]: operation list),s
+   fun (b: balance_of) (s: storage) -> 
+   let {requests;callback} = b in
+   let get_balance_info (request : request) : callback =
+      let {owner;token_id} = request in
+      let ()          = Storage.assert_token_exist  s token_id in 
+      let owner_token = Storage.get_token_for_owner s owner    in
+      let balance_    = Collection.get_amount_for_token owner_token token_id in
+      {request=request;balance=balance_}
+   in
+   let callback_param = List.map get_balance_info requests in
+   let operation = Tezos.transaction callback_param 0tez callback in
+   ([operation]: operation list),s
 
 (** operator entrypoint *)
 type operator = [@layout:comb] {
