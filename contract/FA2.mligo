@@ -12,10 +12,23 @@ module Errors = struct
    let not_operator    = "FA2_NOT_OPERATOR"
 end
 
-module PermissionPolicy = struct
-   type transfer = (address, address set) big_map
-   type t = {transfer : transfer}
-
+module Operators = struct
+   
+(**
+Operators
+Operator is a Tezos address that originates token transfer operation on behalf
+of the owner.
+Owner is a Tezos address which can hold tokens.
+An operator, other than the owner, MUST be approved to manage specific tokens
+held by the owner to transfer them from the owner account.
+FA2 interface specifies an entrypoint to update operators. Operators are permitted
+per specific token owner and token ID (token type). Once permitted, an operator
+can transfer tokens of that type belonging to the owner.
+*)
+   type owner    = address
+   type operator = address
+   type token_id = nat
+   type t = (owner, (operator, token_id set) map) big_map
 (** 
 Default Transfer Permission Policy
 
@@ -34,23 +47,57 @@ one of the permitted operators, the transaction MUST fail with the error mnemoni
 "FA2_NOT_OPERATOR". If at least one of the transfers in the batch is not permitted,
 the whole transaction MUST fail.
 *)
-   let check_transfer (transfer : transfer) (from_ : address) : unit = 
+   let assert_authorisation (operators : t) (from_ : address) : unit = 
       let sender_ = Tezos.sender in
       if (sender_ = from_) then ()
       else 
-      let authorized = match Big_map.find_opt from_ transfer with
-         Some (a) -> a | None -> Set.empty
-      in if Set.mem sender_ authorized then ()
+      let authorized = match Big_map.find_opt from_ operators with
+         Some (a) -> a | None -> Map.empty
+      in if Map.mem sender_ authorized then ()
       else failwith Errors.not_operator
 
+(** 
+The standard does not specify who is permitted to update operators on behalf of
+the token owner. Depending on the business use case, the particular implementation
+of the FA2 contract MAY limit operator updates to a token owner (owner == SENDER)
+or be limited to an administrator.
+*)
+   let assert_update_permission (owner : owner) : unit =
+      assert_with_error (owner = Tezos.sender) "The sender can only manage operators for his own token"
+   (** For an administator
+      let admin = tz1.... in
+      assert_with_error (Tezos.sender = admiin) "Only administrator can manage operators"
+   *)
+
+   let add_operator (operators : t) (owner : owner) (operator : operator) (token_id : token_id) : t =
+      if owner = operator then operators (* assert_authorisation always allow the owner so this case is not relevant *)
+      else
+         let () = assert_update_permission owner in
+         let owner_operators = match Big_map.find_opt owner operators with
+            Some (op) -> op | None -> Map.empty in
+         let owner_operator = match Map.find_opt operator owner_operators with 
+            Some (ts) -> ts | None -> Set.empty in
+         let owner_operator  = Set.add token_id owner_operator in
+         let owner_operators = Map.update operator (Some owner_operator) owner_operators in
+         Big_map.update owner (Some owner_operators) operators
+         
+   let remove_operator (operators : t) (owner : owner) (operator : operator) (token_id : token_id) : t =
+      if owner = operator then operators (* assert_authorisation always allow the owner so this case is not relevant *)
+      else
+         let () = assert_update_permission owner in
+         let owner_operators = match Big_map.find_opt owner operators with
+         None -> None | Some (o_ops) ->
+            let owner_operator = match Map.find_opt operator o_ops with 
+            None -> None | Some (o_op) ->
+               let owner_operator  = Set.remove token_id o_op in
+               if (Set.size owner_operator = 0n) then None else Some (owner_operator)
+            in
+            let owner_operators = Map.update operator owner_operator o_ops in
+            if (Map.size owner_operators = 0n) then None else Some owner_operators
+         in
+         Big_map.update owner owner_operators operators
 end
 
-(* The type of the storage is not provided in the TZIP-12.
-The considaration for designing the storage is to minimize the information stored on chain and the lookup algorithm in the contract.
-Possible efficient datastructure are :
-   Big_map owner    -> Map (big_map ?) token_id (-> amount if applicable).
-   Big_map token_id -> Map (big_map ?) owner    (-> amount if applicable).
-*)
 module Collection = struct
    type token_id = nat
    type amount_  = nat
@@ -99,7 +146,7 @@ type token_id = nat
 type t = {
    ledger : Ledger.t;
    token_metadata : (token_id, string) big_map;
-   policy : PermissionPolicy.t;
+   operators : Operators.t;
 }
 
 let get_token_for_owner (s:t) (owner : address) = 
@@ -112,7 +159,10 @@ let assert_token_exist (s:t) (token_id : nat) : unit  =
       Errors.undefined_token in
    ()
 
-let update_ledger (s:t) (ledger:Ledger.t) = {s with ledger = ledger}
+let set_ledger (s:t) (ledger:Ledger.t) = {s with ledger = ledger}
+
+let get_operators (s:t) = s.operators
+let set_operators (s:t) (operators:Operators.t) = {s with operators = operators}
 end
 
 
@@ -226,12 +276,12 @@ let transfer : transfer -> storage -> operation list * storage =
    in
    let process_single_transfer (ledger, t:Ledger.t * transfer_from ) =
       let {from_;tx} = t in
-      let ()         = PermissionPolicy.check_transfer s.policy.transfer from_ in
+      let ()         = Operators.assert_authorisation s.operators from_ in
       let ledger     = List.fold_left (process_atomic_transfer from_) ledger tx in
       ledger
    in
    let ledger = List.fold_left process_single_transfer s.ledger t in
-   let s = Storage.update_ledger s ledger in
+   let s = Storage.set_ledger s ledger in
    ([]: operation list),s
 
 (** balance_of entrypoint 
@@ -316,19 +366,63 @@ let balance_of : balance_of -> storage -> operation list * storage =
    let operation = Tezos.transaction callback_param 0tez callback in
    ([operation]: operation list),s
 
-(** operator entrypoint *)
+(** update operators entrypoint *)
+(**
+(list %update_operators
+  (or
+    (pair %add_operator
+      (address %owner)
+      (pair
+        (address %operator)
+        (nat %token_id)
+      )
+    )
+    (pair %remove_operator
+      (address %owner)
+      (pair
+        (address %operator)
+        (nat %token_id)
+      )
+    )
+  )
+)
+*)
 type operator = [@layout:comb] {
    owner    : address;
    operator : address;
    token_id : nat; 
 }
 
-type update_operators =
-   Add_operator    of operator
-|  Remove_operator of operator
+type unit_update      = Add_operator of operator | Remove_operator of operator
+type update_operators = unit_update list
+(**
+Add or Remove token operators for the specified token owners and token IDs.
 
+
+The entrypoint accepts a list of update_operator commands. If two different
+commands in the list add and remove an operator for the same token owner and
+token ID, the last command in the list MUST take effect.
+
+
+It is possible to update operators for a token owner that does not hold any token
+balances yet.
+
+
+Operator relation is not transitive. If C is an operator of B and if B is an
+operator of A, C cannot transfer tokens that are owned by A, on behalf of B.
+
+
+*)
 let update_ops : update_operators -> storage -> operation list * storage = 
-   fun (p: update_operators) (s: storage) -> ([]: operation list),s
+   fun (updates: update_operators) (s: storage) -> 
+   let update_operator (operators,update : Operators.t * unit_update) = match update with 
+      Add_operator    {owner=owner;operator=operator;token_id=token_id} -> Operators.add_operator    operators owner operator token_id
+   |  Remove_operator {owner=owner;operator=operator;token_id=token_id} -> Operators.remove_operator operators owner operator token_id
+   in
+   let operators = Storage.get_operators s in
+   let operators = List.fold_left update_operator operators updates in
+   let s = Storage.set_operators s operators in
+   ([]: operation list),s
 
 type parameter = [@layout:comb] | Transfer of transfer | Balance_of of balance_of | Update_operators of update_operators
 let main ((p,s):(parameter * storage)) = match p with
