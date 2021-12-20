@@ -9,6 +9,39 @@
 module Errors = struct
    let ins_balance     = "FA2_INSUFFICIENT_BALANCE"
    let undefined_token = "FA2_TOKEN_UNDEFINED"
+   let not_operator    = "FA2_NOT_OPERATOR"
+end
+
+module PermissionPolicy = struct
+   type transfer = (address, address set) big_map
+   type t = {transfer : transfer}
+
+(** 
+Default Transfer Permission Policy
+
+
+Token owner address MUST be able to perform a transfer of its own tokens (e. g.
+SENDER equals to from_ parameter in the transfer).
+
+
+An operator (a Tezos address that performs token transfer operation on behalf
+of the owner) MUST be permitted to manage the specified owner's tokens before
+it invokes a transfer transaction (see update_operators).
+
+
+If the address that invokes a transfer operation is neither a token owner nor
+one of the permitted operators, the transaction MUST fail with the error mnemonic
+"FA2_NOT_OPERATOR". If at least one of the transfers in the batch is not permitted,
+the whole transaction MUST fail.
+*)
+   let check_transfer (transfer : transfer) (from_ : address) : unit = 
+      let sender_ = Tezos.sender in
+      if (sender_ = from_) then ()
+      else 
+      let authorized = match Big_map.find_opt from_ transfer with
+         Some (a) -> a | None -> Set.empty
+      in if Set.mem sender_ authorized then ()
+      else failwith Errors.not_operator
 end
 
 (* The type of the storage is not provided in the TZIP-12.
@@ -65,6 +98,7 @@ type token_id = nat
 type t = {
    ledger : Ledger.t;
    token_metadata : (token_id, string) big_map;
+   policy : PermissionPolicy.t;
 }
 
 let get_token_for_owner (s:t) (owner : address) = 
@@ -190,7 +224,9 @@ let transfer : transfer -> storage -> operation list * storage =
       ledger
    in
    let process_single_transfer (ledger, t:Ledger.t * transfer_from ) =
-      let ledger : Ledger.t = List.fold_left (process_atomic_transfer t.from_) ledger t.tx in
+      let {from_;tx} = t in
+      let ()         = PermissionPolicy.check_transfer s.policy.transfer from_ in
+      let ledger     = List.fold_left (process_atomic_transfer from_) ledger tx in
       ledger
    in
    let ledger = List.fold_left process_single_transfer s.ledger t in
