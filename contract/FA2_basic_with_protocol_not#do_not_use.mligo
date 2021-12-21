@@ -1,5 +1,5 @@
 (** 
-   This file implement the TZIP-12 protocol for NFT on Tezos a.k.a FA2
+   This file implement the TZIP-12 protocol (a.k.a FA2) on Tezos
    copyright Wulfman Corporation 2021
 *)
 
@@ -134,10 +134,10 @@ module Ledger = struct
    type owner = address
    type t = (owner, Collection.t) big_map
    
-   let get_for_user    (ledger:t) (owner: address) : Collection.t =
+   let get_for_user    (ledger:t) (owner: owner) : Collection.t =
       Option.unopt_with_error (Big_map.find_opt owner ledger) Errors.ins_balance
 
-   let update_for_user (ledger:t) (owner: address) (tokens : Collection.t) : t = 
+   let update_for_user (ledger:t) (owner: owner) (tokens : Collection.t) : t = 
       Big_map.update owner (Some tokens) ledger
 
    let decrease_token_amount_for_user (ledger : t) (from_ : owner) (token_id : nat) (amount_ : nat) : t = 
@@ -152,28 +152,39 @@ module Ledger = struct
       let ledger = update_for_user ledger to_ tokens in
       ledger 
 end
+
+module TokenMetadata = struct
+   (**
+      This should be initialized at origination, conforming to either 
+      TZIP-12 : https://gitlab.com/tezos/tzip/-/blob/master/proposals/tzip-12/tzip-12.md#token-metadata
+      or TZIP-16 : https://gitlab.com/tezos/tzip/-/blob/master/proposals/tzip-12/tzip-12.md#contract-metadata-tzip-016 
+   *)
+   type data = {token_id:nat;token_info:(string,bytes)map}
+   type t = (nat, data) big_map 
+end
+
 module Storage = struct
-type token_id = nat
-type t = {
-   ledger : Ledger.t;
-   token_metadata : (token_id, string) big_map;
-   operators : Operators.t;
-}
+   type token_id = nat
+   type t = {
+      ledger : Ledger.t;
+      token_metadata : TokenMetadata.t;
+      operators : Operators.t;
+   }
 
-let get_token_for_owner (s:t) (owner : address) = 
-   match Big_map.find_opt owner s.ledger with 
-      Some (tokens) -> tokens
-   |  None          -> Map.empty
+   let get_token_for_owner (s:t) (owner : address) = 
+      match Big_map.find_opt owner s.ledger with 
+         Some (tokens) -> tokens
+      |  None          -> Map.empty
 
-let assert_token_exist (s:t) (token_id : nat) : unit  = 
-   let _ = Option.unopt_with_error (Big_map.find_opt token_id s.token_metadata)
-      Errors.undefined_token in
-   ()
+   let assert_token_exist (s:t) (token_id : nat) : unit  = 
+      let _ = Option.unopt_with_error (Big_map.find_opt token_id s.token_metadata)
+         Errors.undefined_token in
+      ()
 
-let set_ledger (s:t) (ledger:Ledger.t) = {s with ledger = ledger}
+   let set_ledger (s:t) (ledger:Ledger.t) = {s with ledger = ledger}
 
-let get_operators (s:t) = s.operators
-let set_operators (s:t) (operators:Operators.t) = {s with operators = operators}
+   let get_operators (s:t) = s.operators
+   let set_operators (s:t) (operators:Operators.t) = {s with operators = operators}
 end
 
 
@@ -435,7 +446,7 @@ let update_ops : update_operators -> storage -> operation list * storage =
    let s = Storage.set_operators s operators in
    ([]: operation list),s
 
-(** If transfer_policy is  No_transfer of Owner_transfer
+(** If transfer_policy is  No_transfer or Owner_transfer
 let update_ops : update_operators -> storage -> operation list * storage = 
    fun (updates: update_operators) (s: storage) -> 
    let () = failwith Errors.not_supported in
