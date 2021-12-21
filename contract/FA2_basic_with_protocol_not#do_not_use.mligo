@@ -113,6 +113,9 @@ module Collection = struct
    type token_id = nat
    type amount_  = nat
    type t = (token_id, amount_) map
+
+   let empty = (Map.empty : t)
+
    let get_amount_for_token (collection : t) (token_id : token_id) : amount_ = 
       match (Map.find_opt token_id collection) with
          Some (amount_) -> amount_
@@ -134,8 +137,9 @@ module Ledger = struct
    type owner = address
    type t = (owner, Collection.t) big_map
    
-   let get_for_user    (ledger:t) (owner: owner) : Collection.t =
-      Option.unopt_with_error (Big_map.find_opt owner ledger) Errors.ins_balance
+   let get_for_user (ledger:t) (owner: owner) : Collection.t =
+      match Big_map.find_opt owner ledger with Some (col) -> col | None -> Collection.empty
+   
 
    let update_for_user (ledger:t) (owner: owner) (tokens : Collection.t) : t = 
       Big_map.update owner (Some tokens) ledger
