@@ -7,9 +7,16 @@
    Errors
 *)
 module Errors = struct
-   let ins_balance     = "FA2_INSUFFICIENT_BALANCE"
    let undefined_token = "FA2_TOKEN_UNDEFINED"
+   let ins_balance     = "FA2_INSUFFICIENT_BALANCE"
+   let no_transfer     = "FA2_TX_DENIED"
+   let not_owner       = "FA2_NOT_OWNER"
    let not_operator    = "FA2_NOT_OPERATOR"
+   let not_supported   = "FA2_OPERATORS_UNSUPPORTED"
+   let rec_hook_fail   = "FA2_RECEIVER_HOOK_FAILED"
+   let send_hook_fail  = "FA2_SENDER_HOOK_FAILED"
+   let rec_hook_undef  = "FA2_RECEIVER_HOOK_UNDEFINED"
+   let send_hook_under = "FA2_SENDER_HOOK_UNDEFINED"
 end
 
 module Operators = struct
@@ -28,7 +35,7 @@ can transfer tokens of that type belonging to the owner.
    type owner    = address
    type operator = address
    type token_id = nat
-   type t = (owner, (operator, token_id set) map) big_map
+   type t = ((owner * operator), token_id set) big_map
 (** 
 Default Transfer Permission Policy
 
@@ -47,14 +54,26 @@ one of the permitted operators, the transaction MUST fail with the error mnemoni
 "FA2_NOT_OPERATOR". If at least one of the transfers in the batch is not permitted,
 the whole transaction MUST fail.
 *)
-   let assert_authorisation (operators : t) (from_ : address) : unit = 
+(** if transfer policy is Owner_or_operator_transfer *)
+   let assert_authorisation (operators : t) (from_ : address) (token_id : nat) : unit = 
       let sender_ = Tezos.sender in
       if (sender_ = from_) then ()
       else 
-      let authorized = match Big_map.find_opt from_ operators with
-         Some (a) -> a | None -> Map.empty
-      in if Map.mem sender_ authorized then ()
+      let authorized = match Big_map.find_opt (from_,sender_) operators with
+         Some (a) -> a | None -> Set.empty
+      in if Set.mem token_id authorized then ()
       else failwith Errors.not_operator
+(** if transfer policy is Owner_transfer
+   let assert_authorisation (operators : t) (from_ : address) : unit = 
+      let sender_ = Tezos.sender in
+      if (sender_ = from_) then ()
+      else failwith Errors.not_owner
+*)
+
+(** if transfer policy is No_transfer
+   let assert_authorisation (operators : t) (from_ : address) : unit = 
+      failwith Errors.no_owner
+*)
 
 (** 
 The standard does not specify who is permitted to update operators on behalf of
@@ -73,29 +92,21 @@ or be limited to an administrator.
       if owner = operator then operators (* assert_authorisation always allow the owner so this case is not relevant *)
       else
          let () = assert_update_permission owner in
-         let owner_operators = match Big_map.find_opt owner operators with
-            Some (op) -> op | None -> Map.empty in
-         let owner_operator = match Map.find_opt operator owner_operators with 
+         let auth_tokens = match Big_map.find_opt (owner,operator) operators with
             Some (ts) -> ts | None -> Set.empty in
-         let owner_operator  = Set.add token_id owner_operator in
-         let owner_operators = Map.update operator (Some owner_operator) owner_operators in
-         Big_map.update owner (Some owner_operators) operators
+         let auth_tokens  = Set.add token_id auth_tokens in
+         Big_map.update (owner,operator) (Some auth_tokens) operators
          
    let remove_operator (operators : t) (owner : owner) (operator : operator) (token_id : token_id) : t =
       if owner = operator then operators (* assert_authorisation always allow the owner so this case is not relevant *)
       else
          let () = assert_update_permission owner in
-         let owner_operators = match Big_map.find_opt owner operators with
-         None -> None | Some (o_ops) ->
-            let owner_operator = match Map.find_opt operator o_ops with 
-            None -> None | Some (o_op) ->
-               let owner_operator  = Set.remove token_id o_op in
-               if (Set.size owner_operator = 0n) then None else Some (owner_operator)
-            in
-            let owner_operators = Map.update operator owner_operator o_ops in
-            if (Map.size owner_operators = 0n) then None else Some owner_operators
+         let auth_tokens = match Big_map.find_opt (owner,operator) operators with
+         None -> None | Some (ts) ->
+            let ts = Set.remove token_id ts in
+            if (Set.size ts = 0n) then None else Some (ts)
          in
-         Big_map.update owner owner_operators operators
+         Big_map.update (owner,operator) auth_tokens operators
 end
 
 module Collection = struct
@@ -270,13 +281,13 @@ let transfer : transfer -> storage -> operation list * storage =
    let process_atomic_transfer (from_:address) (ledger, t:Ledger.t * atomic_trans) =
       let {to_;token_id;amount=amount_} = t in
       let ()     = Storage.assert_token_exist s token_id in
+      let ()     = Operators.assert_authorisation s.operators from_ token_id in
       let ledger = Ledger.decrease_token_amount_for_user ledger from_ token_id amount_ in
       let ledger = Ledger.increase_token_amount_for_user ledger to_   token_id amount_ in
       ledger
    in
    let process_single_transfer (ledger, t:Ledger.t * transfer_from ) =
       let {from_;tx} = t in
-      let ()         = Operators.assert_authorisation s.operators from_ in
       let ledger     = List.fold_left (process_atomic_transfer from_) ledger tx in
       ledger
    in
@@ -423,6 +434,14 @@ let update_ops : update_operators -> storage -> operation list * storage =
    let operators = List.fold_left update_operator operators updates in
    let s = Storage.set_operators s operators in
    ([]: operation list),s
+
+(** If transfer_policy is  No_transfer of Owner_transfer
+let update_ops : update_operators -> storage -> operation list * storage = 
+   fun (updates: update_operators) (s: storage) -> 
+   let () = failwith Errors.not_supported in
+   ([]: operation list),s
+*)
+
 
 type parameter = [@layout:comb] | Transfer of transfer | Balance_of of balance_of | Update_operators of update_operators
 let main ((p,s):(parameter * storage)) = match p with
