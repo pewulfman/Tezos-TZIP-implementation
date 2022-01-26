@@ -104,7 +104,7 @@ let test_atomic_tansfer_success =
   let () = Test.set_source op1 in 
   let (t_addr,_,_) = Test.originate FA2_NFT.main initial_storage 0tez in
   let contr = Test.to_contract t_addr in
-  let () = Test.transfer_to_contract_exn contr (Transfer transfer_requests) 0tez in
+  let _gas = Test.transfer_to_contract_exn contr (Transfer transfer_requests) 0tez in
   let () = assert_balances t_addr ((owner2, 2n), (owner2, 2n), (owner3, 3n)) in
   ()
 
@@ -124,7 +124,7 @@ let test_transfer_token_undefined =
   let contr = Test.to_contract t_addr in
   let result = Test.transfer_to_contract contr (Transfer transfer_requests) 0tez in
   match result with
-    Success -> failwith "This test should fail"
+    Success _gas -> failwith "This test should fail"
   | Fail (Rejected (err, _))  -> assert (Test.michelson_equal err (Test.eval FA2_NFT.Errors.undefined_token))
   | Fail _ -> failwith "invalid test failure"
 
@@ -144,7 +144,7 @@ let test_atomic_transfer_failure_not_operator =
   let contr = Test.to_contract t_addr in
   let result = Test.transfer_to_contract contr (Transfer transfer_requests) 0tez in
   match result with
-    Success -> failwith "This test should fail"
+    Success _gas -> failwith "This test should fail"
   | Fail (Rejected (err, _))  -> assert (Test.michelson_equal err (Test.eval FA2_NFT.Errors.not_operator))
   | Fail _ -> failwith "invalid test failure"
 
@@ -162,7 +162,7 @@ let test_atomic_tansfer_success_zero_amount_and_self_transfer =
   let () = Test.set_source op1 in 
   let (t_addr,_,_) = Test.originate FA2_NFT.main initial_storage 0tez in
   let contr = Test.to_contract t_addr in
-  let () = Test.transfer_to_contract_exn contr (Transfer transfer_requests) 0tez in
+  let _gas = Test.transfer_to_contract_exn contr (Transfer transfer_requests) 0tez in
   let () = assert_balances t_addr ((owner1, 1n), (owner2, 2n), (owner3, 3n)) in
   ()
 
@@ -182,7 +182,7 @@ let test_transfer_failure_transitive_operators =
   let contr = Test.to_contract t_addr in
   let result = Test.transfer_to_contract contr (Transfer transfer_requests) 0tez in
   match result with
-    Success -> failwith "This test should fail"
+    Success _gas -> failwith "This test should fail"
   | Fail (Rejected (err, _))  -> assert (Test.michelson_equal err (Test.eval FA2_NFT.Errors.not_operator))
   | Fail _ -> failwith "invalid test failure"
 
@@ -205,7 +205,7 @@ let test_empty_transfer_and_balance_of =
 
   let (t_addr,_,_) = Test.originate FA2_NFT.main initial_storage 0tez in
   let contr = Test.to_contract t_addr in
-  let () = Test.transfer_to_contract_exn contr (Balance_of balance_of_requests) 0tez in
+  let _gas = Test.transfer_to_contract_exn contr (Balance_of balance_of_requests) 0tez in
 
   let callback_storage = Test.get_storage callback_addr in
   assert (callback_storage = ([] : nat list))
@@ -234,7 +234,7 @@ let test_balance_of_token_undefines =
   let result = Test.transfer_to_contract contr (Balance_of balance_of_requests) 0tez in
 
   match result with
-    Success -> failwith "This test should fail"
+    Success _gas -> failwith "This test should fail"
   | Fail (Rejected (err, _))  -> assert (Test.michelson_equal err (Test.eval FA2_NFT.Errors.undefined_token))
   | Fail _ -> failwith "invalid test failure"
 
@@ -260,7 +260,7 @@ let test_balance_of_requests_with_duplicates =
 
   let (t_addr,_,_) = Test.originate FA2_NFT.main initial_storage 0tez in
   let contr = Test.to_contract t_addr in
-  let () = Test.transfer_to_contract_exn contr (Balance_of balance_of_requests) 0tez in
+  let _gas = Test.transfer_to_contract_exn contr (Balance_of balance_of_requests) 0tez in
 
   let callback_storage = Test.get_storage callback_addr in
   assert (callback_storage = ([1n; 1n; 1n; 0n]))
@@ -286,7 +286,7 @@ let test_balance_of_0_balance_if_address_does_not_hold_tokens =
 
     let (t_addr,_,_) = Test.originate FA2_NFT.main initial_storage 0tez in
     let contr = Test.to_contract t_addr in
-    let () = Test.transfer_to_contract_exn contr (Balance_of balance_of_requests) 0tez in
+    let _gas = Test.transfer_to_contract_exn contr (Balance_of balance_of_requests) 0tez in
 
     let callback_storage = Test.get_storage callback_addr in
     assert (callback_storage = ([1n; 1n; 0n]))
@@ -304,7 +304,7 @@ let test_update_operator_remove_operator_and_transfer =
   let contr = Test.to_contract t_addr in
 
   let () = Test.set_source owner1 in 
-  let () = Test.transfer_to_contract_exn contr 
+  let _gas = Test.transfer_to_contract_exn contr 
     (Update_operators ([
       (Remove_operator ({
         owner    = owner1;
@@ -320,7 +320,7 @@ let test_update_operator_remove_operator_and_transfer =
   in
   let result = Test.transfer_to_contract contr (Transfer transfer_requests) 0tez in
   match result with
-    Success -> failwith "This test should fail"
+    Success _gas -> failwith "This test should fail"
   | Fail (Rejected (err, _))  -> assert (Test.michelson_equal err (Test.eval FA2_NFT.Errors.not_operator))
   | Fail _ -> failwith "invalid test failure"
 
@@ -335,7 +335,7 @@ let test_update_operator_add_operator_and_transfer =
   let contr = Test.to_contract t_addr in
 
   let () = Test.set_source owner1 in 
-  let () = Test.transfer_to_contract_exn contr 
+  let _gas = Test.transfer_to_contract_exn contr 
     (Update_operators ([
       (Add_operator ({
         owner    = owner1;
@@ -349,5 +349,5 @@ let test_update_operator_add_operator_and_transfer =
     ({from_=owner1; tx=([{to_=owner2;token_id=1n};] : FA2_NFT.atomic_trans list)});
   ] : FA2_NFT.transfer)
   in
-  let () = Test.transfer_to_contract_exn contr (Transfer transfer_requests) 0tez in
+  let _gas = Test.transfer_to_contract_exn contr (Transfer transfer_requests) 0tez in
   ()
