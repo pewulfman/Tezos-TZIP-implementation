@@ -1,5 +1,5 @@
 (**
-   This file implement the TZIP-7 protocol (a.k.a FA1.2)
+   This file implements the TZIP-5 protocol (a.k.a FA1)
    copyright Wulfman Corporation 2022
 *)
 
