@@ -1,5 +1,5 @@
 (**
-   This file implement the TZIP-7 protocol (a.k.a FA1.2)
+   This file implements the TZIP-7 protocol (a.k.a FA1.2)
    copyright Wulfman Corporation 2022
 *)
 
@@ -19,6 +19,9 @@ module Allowance = struct
    let get_allowed_amount (a:t) (spender:spender) =
       match Map.find_opt spender a with
          Some v -> v | None -> 0n
+
+   let set_allowed_amount (a:t) (spender:spender) (allowed_amount:allowed_amount) =
+      if allowed_amount > 0n then Map.add a spender allowed_amount
 end
 
 module Ledger = struct
@@ -37,7 +40,9 @@ module Ledger = struct
 
    let set_approval (ledger:t) (owner: owner) (spender : spender) (allowed_amount: amount_) =
       let tokens,allowances = get_for_user ledger owner in
-      let allowances = Map.add spender allowed_amount allowances in
+      let previous_allowances = Allowance.get_allowed_amount allowances spender in
+      let () = assert_with_error (previous_allowances <> 0 and allowances <> 0) "Switch allowances from N to M is a vulnerability" in
+      let allowances = Allowance.set_allowed_amount allowances spender allowed_amounts in
       let ledger     = update_for_user ledger owner tokens allowances in
       ledger
 
