@@ -39,8 +39,8 @@ module Storage = struct
    type t = {
       ledger : Ledger.t;
       totalSupply : nat;
-      (* Note: memoising the sum of all participant balance reduce the cost of getTotalSupply entrypoint.
-         However, with this pattern the value has to be manualy set at origination which can lead to consistancy issues.
+      (* Note: memoizing the sum of all participant balance reduce the cost of getTotalSupply entrypoint.
+         However, with this pattern the value has to be manually set at origination which can lead to consistency issues.
       *)
    }
 
@@ -55,7 +55,7 @@ end
 type storage = Storage.t
 
 
-(** transfert entrypoint *)
+(** transfer entrypoint *)
 type transfer = address * (address * nat)
 let transfer (from_,(to_,value):transfer) (s:storage) =
    let ledger = Storage.get_ledger s in
