@@ -1,2 +1,3 @@
-# FA2
-FA2 - ligo contract
+# Tezos TZIP standard Implementation in LIGO
+
+- TZIP-12 (FA2)
