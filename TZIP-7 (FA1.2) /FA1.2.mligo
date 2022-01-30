@@ -9,6 +9,8 @@
 module Errors = struct
    let notEnoughBalance   = "NotEnoughBalance"
    let notEnoughAllowance = "NotEnoughAllowance"
+   (* Extra error, see: https://docs.google.com/document/d/1YLPtQxZu1UAvO9cZ1O2RPXBbT0mooh4DYKjA_jp-RLM/edit *)
+   let vulnerable_operation = "Switching allowances from N to M is a vulnerability"
 end
 
 module Allowance = struct
@@ -21,7 +23,7 @@ module Allowance = struct
          Some v -> v | None -> 0n
 
    let set_allowed_amount (a:t) (spender:spender) (allowed_amount:allowed_amount) =
-      if allowed_amount > 0n then Map.add a spender allowed_amount
+      if allowed_amount > 0n then Map.add spender allowed_amount a else a
 end
 
 module Ledger = struct
@@ -41,8 +43,8 @@ module Ledger = struct
    let set_approval (ledger:t) (owner: owner) (spender : spender) (allowed_amount: amount_) =
       let tokens,allowances = get_for_user ledger owner in
       let previous_allowances = Allowance.get_allowed_amount allowances spender in
-      let () = assert_with_error (previous_allowances <> 0 and allowances <> 0) "Switch allowances from N to M is a vulnerability" in
-      let allowances = Allowance.set_allowed_amount allowances spender allowed_amounts in
+      let () = assert_with_error (previous_allowances = 0n || allowed_amount = 0n) Errors.vulnerable_operation in
+      let allowances = Allowance.set_allowed_amount allowances spender allowed_amount in
       let ledger     = update_for_user ledger owner tokens allowances in
       ledger
 
