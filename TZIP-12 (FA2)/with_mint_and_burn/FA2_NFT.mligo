@@ -283,6 +283,7 @@ let burn (lst : mint_or_burn list) (s : storage) =
    let () = Storage.assert_admin s in
    let ledger = Storage.get_ledger s in
    let process_one (ledger,{owner;token_id} : Ledger.t * mint_or_burn) =
+      let () = Storage.assert_token_exist  s token_id in
       Ledger.burn_token ledger token_id owner
    in
    let ledger = List.fold_left process_one ledger lst in
