@@ -1,4 +1,4 @@
-#import "../contract/FA2_single_asset.mligo" "FA2_single_asset"
+#import "../standard_contract/FA2_single_asset.mligo" "FA2_single_asset"
 #import "./balance_of_callback_contract.mligo" "Callback"
 
 (* Tests for FA2 single asset contract *)

@@ -1,4 +1,4 @@
-#import "../contract/FA2_NFT.mligo" "FA2_NFT"
+#import "../standard_contract/FA2_NFT.mligo" "FA2_NFT"
 #import "./balance_of_callback_contract.mligo" "Callback"
 
 (* Tests for FA2 multi asset contract *)
