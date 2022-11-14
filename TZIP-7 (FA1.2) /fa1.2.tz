@@ -1,0 +1,212 @@
+{ parameter
+    (or (or (or (pair %approve address nat)
+                (pair %getAllowance (pair address address) (contract nat)))
+            (or (pair %getBalance address (contract nat))
+                (pair %getTotalSupply unit (contract nat))))
+        (pair %transfer address address nat)) ;
+  storage
+    (pair (pair (big_map %ledger address (pair nat (map address nat)))
+                (big_map %metadata string bytes))
+          (big_map %token_metadata nat (pair (nat %token_id) (map %token_info string bytes)))
+          (nat %totalSupply)) ;
+  code { LAMBDA
+           (pair (map address nat) address)
+           nat
+           { UNPAIR ; SWAP ; GET ; IF_NONE { PUSH nat 0 } {} } ;
+         LAMBDA
+           (pair (big_map address (pair nat (map address nat))) address)
+           (pair nat (map address nat))
+           { UNPAIR ;
+             SWAP ;
+             GET ;
+             IF_NONE { EMPTY_MAP address nat ; PUSH nat 0 ; PAIR } {} } ;
+         LAMBDA
+           (pair (big_map address (pair nat (map address nat))) address nat (map address nat))
+           (big_map address (pair nat (map address nat)))
+           { UNPAIR 4 ; DIG 3 ; DIG 3 ; PAIR ; SOME ; DIG 2 ; UPDATE } ;
+         LAMBDA
+           (pair (pair (big_map address (pair nat (map address nat))) (big_map string bytes))
+                 (big_map nat (pair nat (map string bytes)))
+                 nat)
+           (big_map address (pair nat (map address nat)))
+           { CAR ; CAR } ;
+         LAMBDA
+           (pair (pair (pair (big_map address (pair nat (map address nat))) (big_map string bytes))
+                       (big_map nat (pair nat (map string bytes)))
+                       nat)
+                 (big_map address (pair nat (map address nat))))
+           (pair (pair (big_map address (pair nat (map address nat))) (big_map string bytes))
+                 (big_map nat (pair nat (map string bytes)))
+                 nat)
+           { UNPAIR ; UNPAIR ; CDR ; DIG 2 ; PAIR ; PAIR } ;
+         DIG 5 ;
+         UNPAIR ;
+         IF_LEFT
+           { IF_LEFT
+               { IF_LEFT
+                   { UNPAIR ;
+                     DUP 3 ;
+                     DIG 5 ;
+                     SWAP ;
+                     EXEC ;
+                     DUG 2 ;
+                     SENDER ;
+                     DIG 3 ;
+                     DUP 2 ;
+                     DUP 2 ;
+                     PAIR ;
+                     DIG 8 ;
+                     SWAP ;
+                     EXEC ;
+                     UNPAIR ;
+                     DUP 5 ;
+                     DUP 3 ;
+                     PAIR ;
+                     DIG 10 ;
+                     SWAP ;
+                     EXEC ;
+                     PUSH string "Switching allowances from N to M is a vulnerability" ;
+                     PUSH nat 0 ;
+                     DUP 9 ;
+                     COMPARE ;
+                     EQ ;
+                     PUSH nat 0 ;
+                     DIG 3 ;
+                     COMPARE ;
+                     EQ ;
+                     OR ;
+                     IF { DROP } { FAILWITH } ;
+                     PUSH nat 0 ;
+                     DUP 7 ;
+                     COMPARE ;
+                     GT ;
+                     IF { SWAP ; DIG 5 ; DIG 5 ; SWAP ; SOME ; SWAP ; UPDATE }
+                        { DIG 4 ; DIG 5 ; DROP 2 ; SWAP } ;
+                     SWAP ;
+                     DIG 3 ;
+                     DIG 3 ;
+                     PAIR 4 ;
+                     DIG 3 ;
+                     SWAP ;
+                     EXEC ;
+                     SWAP ;
+                     PAIR ;
+                     EXEC ;
+                     NIL operation }
+                   { DIG 2 ;
+                     DIG 3 ;
+                     DIG 4 ;
+                     DROP 3 ;
+                     UNPAIR ;
+                     UNPAIR ;
+                     DUP 4 ;
+                     CAR ;
+                     CAR ;
+                     PAIR ;
+                     DIG 4 ;
+                     SWAP ;
+                     EXEC ;
+                     CDR ;
+                     PAIR ;
+                     DIG 3 ;
+                     SWAP ;
+                     EXEC ;
+                     SWAP ;
+                     PUSH mutez 0 ;
+                     DIG 2 ;
+                     TRANSFER_TOKENS ;
+                     SWAP ;
+                     NIL operation ;
+                     DIG 2 ;
+                     CONS } }
+               { DIG 2 ;
+                 DIG 3 ;
+                 DIG 4 ;
+                 DIG 6 ;
+                 DROP 4 ;
+                 IF_LEFT
+                   { UNPAIR ;
+                     DUP 3 ;
+                     CAR ;
+                     CAR ;
+                     PAIR ;
+                     DIG 3 ;
+                     SWAP ;
+                     EXEC ;
+                     SWAP ;
+                     PUSH mutez 0 ;
+                     DIG 2 ;
+                     CAR ;
+                     TRANSFER_TOKENS }
+                   { DIG 2 ; DROP ; CDR ; PUSH mutez 0 ; DUP 3 ; CDR ; CDR ; TRANSFER_TOKENS } ;
+                 SWAP ;
+                 NIL operation ;
+                 DIG 2 ;
+                 CONS } }
+           { UNPAIR ;
+             SWAP ;
+             UNPAIR ;
+             DUP 4 ;
+             DIG 6 ;
+             SWAP ;
+             EXEC ;
+             DUP 3 ;
+             DIG 4 ;
+             SENDER ;
+             DIG 3 ;
+             DUP 3 ;
+             DUP 2 ;
+             PAIR ;
+             DUP 11 ;
+             SWAP ;
+             EXEC ;
+             UNPAIR ;
+             DUP 5 ;
+             DUP 5 ;
+             COMPARE ;
+             EQ ;
+             IF { DIG 3 ; DIG 12 ; DROP 2 ; DUP }
+                { DIG 3 ; DUP 3 ; PAIR ; DIG 12 ; SWAP ; EXEC } ;
+             PUSH string "NotEnoughAllowance" ;
+             DUP 7 ;
+             DIG 2 ;
+             COMPARE ;
+             GE ;
+             IF { DROP } { FAILWITH } ;
+             PUSH string "NotEnoughBalance" ;
+             DUP 6 ;
+             DUP 3 ;
+             COMPARE ;
+             GE ;
+             IF { DROP } { FAILWITH } ;
+             DIG 4 ;
+             SWAP ;
+             SUB ;
+             ABS ;
+             DIG 3 ;
+             DIG 3 ;
+             PAIR 4 ;
+             DUP 6 ;
+             SWAP ;
+             EXEC ;
+             DUP 2 ;
+             DUP 2 ;
+             PAIR ;
+             DIG 7 ;
+             SWAP ;
+             EXEC ;
+             UNPAIR ;
+             DIG 4 ;
+             ADD ;
+             DIG 3 ;
+             DIG 3 ;
+             PAIR 4 ;
+             DIG 3 ;
+             SWAP ;
+             EXEC ;
+             SWAP ;
+             PAIR ;
+             EXEC ;
+             NIL operation } ;
+         PAIR } }
+

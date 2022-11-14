@@ -3,6 +3,8 @@
    copyright Wulfman Corporation 2022
 *)
 
+#import "metadata.mligo" "Metadata"
+
 (*
    Errors
 *)
@@ -18,6 +20,8 @@ module Allowance = struct
    type allowed_amount = nat
 	type t = (spender, allowed_amount) map
 
+   let init () : t = Map.empty
+
    let get_allowed_amount (a:t) (spender:spender) =
       match Map.find_opt spender a with
          Some v -> v | None -> 0n
@@ -31,6 +35,8 @@ module Ledger = struct
    type spender    = address
    type amount_    = nat
    type t = (owner, amount_ * Allowance.t) big_map
+
+   let init () : t = Big_map.literal [("tz1h8DGEKrMBYQph1NiT8J1BLmnTCa6ocwEZ": address), (1_000_000_000n, (Map.empty : Allowance.t))]
 
    let get_for_user (ledger:t) (owner: owner) : amount_ * Allowance.t =
       match Big_map.find_opt owner ledger with
@@ -66,24 +72,39 @@ module Ledger = struct
 end
 
 module TokenMetadata = struct
-   (**
-      This should be initialized at origination, conforming to either
-      TZIP-12 : https://gitlab.com/tezos/tzip/-/blob/master/proposals/tzip-12/tzip-12.md#token-metadata
-      or TZIP-16 : https://gitlab.com/tezos/tzip/-/blob/master/proposals/tzip-12/tzip-12.md#contract-metadata-tzip-016
-   *)
    type data = {token_id:nat;token_info:(string,bytes)map}
-   type t = data
+   type t = (nat,data) big_map
+
+   let data = [%bytes
+   {|{
+      "name" : "Wulfy",
+      "symbol" : "WULF",
+      "decimal" : "3",
+   }|}]
+
+   let init () : t = Big_map.literal [
+      (0n, {token_id=0n;token_info=Map.literal ["",data]})
+   ]
 end
 
 module Storage = struct
    type t = {
       ledger : Ledger.t;
       token_metadata : TokenMetadata.t;
+      metadata : Metadata.t;
       totalSupply : nat;
       (* Note: memoizing the sum of all participant balance reduce the cost of getTotalSupply entrypoint.
          However, with this pattern the value has to be manually set at origination which can lead to consistency issues.
       *)
    }
+   let init () : t =
+      (* let totalSupply = Map.fold (fun acc k (amount,allowes) -> acc + amount) 0n (Ledger.init ()) in *)
+      {
+         ledger = Ledger.init ();
+         token_metadata = TokenMetadata.init ();
+         metadata = Metadata.init ();
+         totalSupply = 0n;
+      }
 
    let get_amount_for_owner (s:t) (owner : address) =
       let amount_,_ = Ledger.get_for_user s.ledger owner in
@@ -106,7 +127,7 @@ type storage = Storage.t
 type transfer = address * (address * nat)
 let transfer (from_,(to_,value):transfer) (s:storage) =
    let ledger = Storage.get_ledger s in
-   let ledger = Ledger.decrease_token_amount_for_user ledger Tezos.sender from_ value in
+   let ledger = Ledger.decrease_token_amount_for_user ledger (Tezos.get_sender ()) from_ value in
    let ledger = Ledger.increase_token_amount_for_user ledger to_   value in
    let s = Storage.set_ledger s ledger in
    ([]: operation list),s
@@ -115,7 +136,7 @@ let transfer (from_,(to_,value):transfer) (s:storage) =
 type approve = (address * nat)
 let approve (spender,value : approve) (s:storage) =
    let ledger = Storage.get_ledger s in
-   let ledger = Ledger.set_approval ledger Tezos.sender spender value in
+   let ledger = Ledger.set_approval ledger (Tezos.get_sender ()) spender value in
    let s = Storage.set_ledger s ledger in
    ([]: operation list),s
 
