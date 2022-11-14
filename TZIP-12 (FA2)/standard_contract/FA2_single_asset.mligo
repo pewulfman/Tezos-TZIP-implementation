@@ -25,9 +25,11 @@ module Operators = struct
    type token_id = nat
    type t = (owner, operator set) big_map
 
+   let init () : t = Big_map.empty
+
 (** if transfer policy is Owner_or_operator_transfer *)
    let assert_authorisation (operators : t) (from_ : address) : unit =
-      let sender_ = Tezos.sender in
+      let sender_ = Tezos.get_sender () in
       if (sender_ = from_) then ()
       else
       let authorized = match Big_map.find_opt from_ operators with
@@ -47,7 +49,7 @@ module Operators = struct
 *)
 
    let assert_update_permission (owner : owner) : unit =
-      assert_with_error (owner = Tezos.sender) "The sender can only manage operators for his own token"
+      assert_with_error (owner = Tezos.get_sender ()) "The sender can only manage operators for his own token"
    (** For an administator
       let admin = tz1.... in
       assert_with_error (Tezos.sender = admiin) "Only administrator can manage operators"
@@ -79,6 +81,8 @@ module Ledger = struct
    type amount_ = nat
    type t = (owner, amount_) big_map
 
+   let init () = Big_map.literal [("tz1h8DGEKrMBYQph1NiT8J1BLmnTCa6ocwEZ" : address), 1_000_000n]
+
    let get_for_user    (ledger:t) (owner: owner) : amount_ =
       match Big_map.find_opt owner ledger with
          Some (tokens) -> tokens
@@ -107,16 +111,39 @@ module TokenMetadata = struct
       TZIP-12 : https://gitlab.com/tezos/tzip/-/blob/master/proposals/tzip-12/tzip-12.md#token-metadata
       or TZIP-16 : https://gitlab.com/tezos/tzip/-/blob/master/proposals/tzip-12/tzip-12.md#contract-metadata-tzip-016
    *)
+   (* with TZIP-12 *)
    type data = {token_id:nat;token_info:(string,bytes)map}
-   type t = data
+   type t = (nat,data) big_map
+
+   let data = [%bytes
+   {|{
+      "name" : "Wulfy FA2 single asset",
+      "symbol" : "WSA2",
+      "decimal" : "3",
+   }|}]
+
+   let init () : t = Big_map.literal [
+      (0n, {token_id=0n;token_info=Map.literal ["",data]})
+   ]
 end
+
+
+#import "metadata.mligo" "Metadata"
 
 module Storage = struct
    type token_id = nat
-   type t = {
+   type t = [@layer:comb] {
       ledger : Ledger.t;
-      token_metadata : TokenMetadata.t;
       operators : Operators.t;
+      token_metadata : TokenMetadata.t;
+      metadata : Metadata.t;
+   }
+
+   let init () : t = {
+      ledger = Ledger.init ();
+      operators = Operators.init ();
+      token_metadata = TokenMetadata.init ();
+      metadata = Metadata.init ();
    }
 
    let get_amount_for_owner (s:t) (owner : address) =
@@ -193,7 +220,7 @@ let balance_of : balance_of -> storage -> operation list * storage =
    fun (b: balance_of) (s: storage) ->
    let {requests;callback} = b in
    let get_balance_info (request : request) : callback =
-      let {owner;token_id} = request in
+      let {owner;token_id=_} = request in
       let balance_ = Storage.get_amount_for_owner s owner    in
       {request=request;balance=balance_}
    in
@@ -251,8 +278,8 @@ operator of A, C cannot transfer tokens that are owned by A, on behalf of B.
 let update_ops : update_operators -> storage -> operation list * storage =
    fun (updates: update_operators) (s: storage) ->
    let update_operator (operators,update : Operators.t * unit_update) = match update with
-      Add_operator    {owner=owner;operator=operator;token_id=token_id} -> Operators.add_operator    operators owner operator
-   |  Remove_operator {owner=owner;operator=operator;token_id=token_id} -> Operators.remove_operator operators owner operator
+      Add_operator    {owner=owner;operator=operator;token_id=_} -> Operators.add_operator    operators owner operator
+   |  Remove_operator {owner=owner;operator=operator;token_id=_} -> Operators.remove_operator operators owner operator
    in
    let operators = Storage.get_operators s in
    let operators = List.fold_left update_operator operators updates in

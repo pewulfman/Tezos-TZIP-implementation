@@ -1,9 +1,9 @@
-(** 
+(**
    This file implement the TZIP-12 protocol (a.k.a FA2) for Multi asset on Tezos
    copyright Wulfman Corporation 2021
 *)
 
-(* 
+(*
    Errors
 *)
 module Errors = struct
@@ -25,32 +25,34 @@ module Operators = struct
    type token_id = nat
    type t = ((owner * operator), token_id set) big_map
 
+   let init () : t = Big_map.empty
+
 (** if transfer policy is Owner_or_operator_transfer *)
-   let assert_authorisation (operators : t) (from_ : address) (token_id : nat) : unit = 
-      let sender_ = Tezos.sender in
+   let assert_authorisation (operators : t) (from_ : address) (token_id : nat) : unit =
+      let sender_ = Tezos.get_sender () in
       if (sender_ = from_) then ()
-      else 
+      else
       let authorized = match Big_map.find_opt (from_,sender_) operators with
          Some (a) -> a | None -> Set.empty
       in if Set.mem token_id authorized then ()
       else failwith Errors.not_operator
 (** if transfer policy is Owner_transfer
-   let assert_authorisation (operators : t) (from_ : address) : unit = 
-      let sender_ = Tezos.sender in
+   let assert_authorisation (operators : t) (from_ : address) : unit =
+      let sender_ = Tezos.get_sender () in
       if (sender_ = from_) then ()
       else failwith Errors.not_owner
 *)
 
 (** if transfer policy is No_transfer
-   let assert_authorisation (operators : t) (from_ : address) : unit = 
+   let assert_authorisation (operators : t) (from_ : address) : unit =
       failwith Errors.no_owner
 *)
 
    let assert_update_permission (owner : owner) : unit =
-      assert_with_error (owner = Tezos.sender) "The sender can only manage operators for his own token"
+      assert_with_error (owner = Tezos.get_sender ()) "The sender can only manage operators for his own token"
    (** For an administator
       let admin = tz1.... in
-      assert_with_error (Tezos.sender = admiin) "Only administrator can manage operators"
+      assert_with_error (Tezos.get_sender () = admiin) "Only administrator can manage operators"
    *)
 
    let add_operator (operators : t) (owner : owner) (operator : operator) (token_id : token_id) : t =
@@ -61,7 +63,7 @@ module Operators = struct
             Some (ts) -> ts | None -> Set.empty in
          let auth_tokens  = Set.add token_id auth_tokens in
          Big_map.update (owner,operator) (Some auth_tokens) operators
-         
+
    let remove_operator (operators : t) (owner : owner) (operator : operator) (token_id : token_id) : t =
       if owner = operator then operators (* assert_authorisation always allow the owner so this case is not relevant *)
       else
@@ -79,36 +81,79 @@ module Ledger = struct
    type token_id = nat
    type amount_  = nat
    type t = ((owner * token_id), amount_) big_map
-   
+
+   let init () = Big_map.literal [
+      ((("tz1h8DGEKrMBYQph1NiT8J1BLmnTCa6ocwEZ" : address),0n), 1_000_000n);
+      ((("tz1h8DGEKrMBYQph1NiT8J1BLmnTCa6ocwEZ" : address),1n), 1_000_000_000n);
+      ((("tz1h8DGEKrMBYQph1NiT8J1BLmnTCa6ocwEZ" : address),2n), 9_342n);
+      ((("tz1h8DGEKrMBYQph1NiT8J1BLmnTCa6ocwEZ" : address),3n), 75_000n);
+   ]
+
    let get_for_user (ledger:t) (owner: owner) (token_id : token_id) : amount_ =
       match Big_map.find_opt (owner,token_id) ledger with Some (a) -> a | None -> 0n
-   
 
-   let set_for_user (ledger:t) (owner: owner) (token_id : token_id ) (amount_:amount_) : t = 
+
+   let set_for_user (ledger:t) (owner: owner) (token_id : token_id ) (amount_:amount_) : t =
       Big_map.update (owner,token_id) (Some amount_) ledger
 
-   let decrease_token_amount_for_user (ledger : t) (from_ : owner) (token_id : nat) (amount_ : nat) : t = 
+   let decrease_token_amount_for_user (ledger : t) (from_ : owner) (token_id : nat) (amount_ : nat) : t =
       let balance_ = get_for_user ledger from_ token_id in
       let ()       = assert_with_error (balance_ >= amount_) Errors.ins_balance in
       let balance_ = abs (balance_ - amount_) in
       let ledger   = set_for_user ledger from_ token_id balance_ in
-      ledger 
+      ledger
 
-   let increase_token_amount_for_user (ledger : t) (to_   : owner) (token_id : nat) (amount_ : nat) : t = 
+   let increase_token_amount_for_user (ledger : t) (to_   : owner) (token_id : nat) (amount_ : nat) : t =
       let balance_ = get_for_user ledger to_ token_id in
       let balance_ = balance_ + amount_ in
       let ledger   = set_for_user ledger to_ token_id balance_ in
-      ledger 
+      ledger
 end
 
 module TokenMetadata = struct
    (**
-      This should be initialized at origination, conforming to either 
+      This should be initialized at origination, conforming to either
       TZIP-12 : https://gitlab.com/tezos/tzip/-/blob/master/proposals/tzip-12/tzip-12.md#token-metadata
-      or TZIP-16 : https://gitlab.com/tezos/tzip/-/blob/master/proposals/tzip-12/tzip-12.md#contract-metadata-tzip-016 
+      or TZIP-16 : https://gitlab.com/tezos/tzip/-/blob/master/proposals/tzip-12/tzip-12.md#contract-metadata-tzip-016
    *)
+   (* with TZIP-12 *)
    type data = {token_id:nat;token_info:(string,bytes)map}
-   type t = (nat, data) big_map 
+   type t = (nat,data) big_map
+
+   let data0 = [%bytes
+   {|{
+      "name" : "Wulfy FA2 single asset",
+      "symbol" : "WMA0",
+      "decimal" : "3",
+   }|}]
+
+   let data1 = [%bytes
+   {|{
+      "name" : "Wulfy FA2 single asset",
+      "symbol" : "WMA1",
+      "decimal" : "3",
+   }|}]
+
+   let data2 = [%bytes
+   {|{
+      "name" : "Wulfy FA2 single asset",
+      "symbol" : "WMA2",
+      "decimal" : "3",
+   }|}]
+
+   let data3 = [%bytes
+   {|{
+      "name" : "Wulfy FA2 single asset",
+      "symbol" : "WMA3",
+      "decimal" : "3",
+   }|}]
+
+   let init () : t = Big_map.literal [
+      (0n, {token_id=0n;token_info=Map.literal ["",data0]});
+      (1n, {token_id=1n;token_info=Map.literal ["",data1]});
+      (2n, {token_id=2n;token_info=Map.literal ["",data2]});
+      (3n, {token_id=3n;token_info=Map.literal ["",data3]});
+   ]
 end
 
 module Storage = struct
@@ -119,7 +164,7 @@ module Storage = struct
       operators : Operators.t;
    }
 
-   let assert_token_exist (s:t) (token_id : nat) : unit  = 
+   let assert_token_exist (s:t) (token_id : nat) : unit  =
       let _ = Option.unopt_with_error (Big_map.find_opt token_id s.token_metadata)
          Errors.undefined_token in
       ()
@@ -148,8 +193,8 @@ type transfer_from = {
 }
 type transfer = transfer_from list
 
-let transfer : transfer -> storage -> operation list * storage = 
-   fun (t:transfer) (s:storage) -> 
+let transfer : transfer -> storage -> operation list * storage =
+   fun (t:transfer) (s:storage) ->
    (* This function process the "tx" list. Since all transfer share the same "from_" address, we use a se *)
    let process_atomic_transfer (from_:address) (ledger, t:Ledger.t * atomic_trans) =
       let {to_;token_id;amount=amount_} = t in
@@ -168,7 +213,7 @@ let transfer : transfer -> storage -> operation list * storage =
    let s = Storage.set_ledger s ledger in
    ([]: operation list),s
 
-(** balance_of entrypoint 
+(** balance_of entrypoint
 *)
 type request = {
    owner    : address;
@@ -185,12 +230,12 @@ type balance_of = [@layout:comb] {
    callback : callback list contract;
 }
 
-let balance_of : balance_of -> storage -> operation list * storage = 
-   fun (b: balance_of) (s: storage) -> 
+let balance_of : balance_of -> storage -> operation list * storage =
+   fun (b: balance_of) (s: storage) ->
    let {requests;callback} = b in
    let get_balance_info (request : request) : callback =
       let {owner;token_id} = request in
-      let ()          = Storage.assert_token_exist  s token_id in 
+      let ()          = Storage.assert_token_exist  s token_id in
       let balance_    = Ledger.get_for_user s.ledger owner token_id in
       {request=request;balance=balance_}
    in
@@ -202,15 +247,15 @@ let balance_of : balance_of -> storage -> operation list * storage =
 type operator = [@layout:comb] {
    owner    : address;
    operator : address;
-   token_id : nat; 
+   token_id : nat;
 }
 
 type unit_update      = Add_operator of operator | Remove_operator of operator
 type update_operators = unit_update list
 
-let update_ops : update_operators -> storage -> operation list * storage = 
-   fun (updates: update_operators) (s: storage) -> 
-   let update_operator (operators,update : Operators.t * unit_update) = match update with 
+let update_ops : update_operators -> storage -> operation list * storage =
+   fun (updates: update_operators) (s: storage) ->
+   let update_operator (operators,update : Operators.t * unit_update) = match update with
       Add_operator    {owner=owner;operator=operator;token_id=token_id} -> Operators.add_operator    operators owner operator token_id
    |  Remove_operator {owner=owner;operator=operator;token_id=token_id} -> Operators.remove_operator operators owner operator token_id
    in
@@ -220,8 +265,8 @@ let update_ops : update_operators -> storage -> operation list * storage =
    ([]: operation list),s
 
 (** If transfer_policy is  No_transfer or Owner_transfer
-let update_ops : update_operators -> storage -> operation list * storage = 
-   fun (updates: update_operators) (s: storage) -> 
+let update_ops : update_operators -> storage -> operation list * storage =
+   fun (updates: update_operators) (s: storage) ->
    let () = failwith Errors.not_supported in
    ([]: operation list),s
 *)
