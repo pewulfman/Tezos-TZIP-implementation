@@ -122,37 +122,36 @@ module TokenMetadata = struct
 
    let data0 = [%bytes
    {|{
-      "name" : "Wulfy FA2 single asset",
+      "name" : "Wulfy FA2 mutlti asset 0",
       "symbol" : "WMA0",
-      "decimal" : "3",
+      "decimals" : "3",
    }|}]
 
-   let data1 = [%bytes
-   {|{
-      "name" : "Wulfy FA2 single asset",
-      "symbol" : "WMA1",
-      "decimal" : "3",
-   }|}]
+   let data1 = Map.literal [
+      ("name", [%bytes {| "Wulfy FA2 multi asset 1" |}]);
+      ("symbol", [%bytes {| "WMA1" |}]);
+      ("decimals", [%bytes {| "3" |}]);
+   ]
 
    let data2 = [%bytes
    {|{
-      "name" : "Wulfy FA2 single asset",
+      "name" : "Wulfy FA2 mutlti asset 2",
       "symbol" : "WMA2",
-      "decimal" : "3",
+      "decimals" : "3",
    }|}]
 
    let data3 = [%bytes
    {|{
-      "name" : "Wulfy FA2 single asset",
+      "name" : "Wulfy FA2 mutlti asset 3",
       "symbol" : "WMA3",
-      "decimal" : "3",
+      "decimals" : "3",
    }|}]
 
    let init () : t = Big_map.literal [
-      (0n, {token_id=0n;token_info=Map.literal ["",data0]});
-      (1n, {token_id=1n;token_info=Map.literal ["",data1]});
-      (2n, {token_id=2n;token_info=Map.literal ["",data2]});
-      (3n, {token_id=3n;token_info=Map.literal ["",data3]});
+      (0n, {token_id=0n;token_info=Map.literal [("", [%bytes {|tezos-storage:token_data|}]);("token_data", data0);]});
+      (1n, {token_id=1n;token_info=data1});
+      (2n, {token_id=2n;token_info=Map.literal [("", [%bytes {|tezos-storage:decimals|}]);("decimals", [%bytes {| "3" |}]);]});
+      (3n, {token_id=3n;token_info=Map.literal [("", [%bytes {|tezos-storage:data|}]);("data", data3);]});
    ]
 end
 
