@@ -140,18 +140,17 @@ module TokenMetadata = struct
       "decimals" : "3",
    }|}]
 
-   let data3 = [%bytes
-   {|{
-      "name" : "Wulfy FA2 mutlti asset 3",
-      "symbol" : "WMA3",
-      "decimals" : "3",
-   }|}]
+   let data3 = Map.literal [
+      ("name", [%bytes {| "Wulfy FA2 multi asset 3" |}]);
+      ("symbol", [%bytes {| "WMA3" |}]);
+      ("decimals", [%bytes {| "3" |}]);
+   ]
 
    let init () : t = Big_map.literal [
-      (0n, {token_id=0n;token_info=Map.literal [("", [%bytes {|tezos-storage:token_data|}]);("token_data", data0);]});
+      (0n, {token_id=0n;token_info=Map.literal [("", [%bytes {|tezos-storage:data|}]);("data", data0);]});
       (1n, {token_id=1n;token_info=data1});
-      (2n, {token_id=2n;token_info=Map.literal [("", [%bytes {|tezos-storage:decimals|}]);("decimals", [%bytes {| "3" |}]);]});
-      (3n, {token_id=3n;token_info=Map.literal [("", [%bytes {|tezos-storage:data|}]);("data", data3);]});
+      (2n, {token_id=2n;token_info=Map.literal [("", [%bytes {|tezos-storage:data|}]);("data", data2);]});
+      (3n, {token_id=3n;token_info=data3});
    ]
 end
 
