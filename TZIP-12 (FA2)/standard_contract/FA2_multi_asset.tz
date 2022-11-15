@@ -1,6 +1,6 @@
 { parameter
     (or (list %transfer
-           (pair (address %from_) (list %tx (pair (address %to_) (nat %token_id) (nat %amount)))))
+           (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount)))))
         (or (pair %balance_of
                (list %requests (pair (address %owner) (nat %token_id)))
                (contract %callback
@@ -9,8 +9,8 @@
                (or (pair %add_operator (address %owner) (address %operator) (nat %token_id))
                    (pair %remove_operator (address %owner) (address %operator) (nat %token_id)))))) ;
   storage
-    (pair (pair (big_map %ledger (pair address nat) nat)
-                (big_map %operators (pair address address) (set nat)))
+    (pair (pair (big_map %ledger (pair address nat) nat) (big_map %metadata string bytes))
+          (big_map %operators (pair address address) (set nat))
           (big_map %token_metadata nat (pair (nat %token_id) (map %token_info string bytes)))) ;
   code { LAMBDA
            address
@@ -31,13 +31,15 @@
            (big_map (pair address nat) nat)
            { UNPAIR 4 ; DIG 3 ; SOME ; DIG 3 ; DIG 3 ; PAIR ; UPDATE } ;
          LAMBDA
-           (pair (pair (pair (big_map (pair address nat) nat) (big_map (pair address address) (set nat)))
+           (pair (pair (pair (big_map (pair address nat) nat) (big_map string bytes))
+                       (big_map (pair address address) (set nat))
                        (big_map nat (pair nat (map string bytes))))
                  nat)
            unit
            { UNPAIR ;
              PUSH string "FA2_TOKEN_UNDEFINED" ;
              SWAP ;
+             CDR ;
              CDR ;
              DIG 2 ;
              GET ;
@@ -69,8 +71,8 @@
                            EQ ;
                            IF { DROP }
                               { DUP 7 ;
-                                CAR ;
                                 CDR ;
+                                CAR ;
                                 SWAP ;
                                 DUP 7 ;
                                 PAIR ;
@@ -171,8 +173,8 @@
                  DIG 3 ;
                  DROP 2 ;
                  DUP 2 ;
-                 CAR ;
                  CDR ;
+                 CAR ;
                  SWAP ;
                  ITER { IF_LEFT
                           { UNPAIR 3 ;
@@ -240,11 +242,11 @@
                  DROP ;
                  DUP 2 ;
                  CDR ;
+                 CDR ;
                  SWAP ;
-                 DIG 2 ;
-                 CAR ;
-                 CAR ;
                  PAIR ;
+                 SWAP ;
+                 CAR ;
                  PAIR ;
                  NIL operation } } ;
          PAIR } }

@@ -37,6 +37,6 @@ let metadata = [%bytes
 }|}]
 
 let init () : t = Big_map.literal [
-	("", [%bytes {|tezos_storage:data|}]);
+	("", [%bytes {|tezos-storage:data|}]);
 	("data", metadata);
 ]

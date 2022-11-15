@@ -175,13 +175,13 @@ type atomic_trans = [@layout:comb] {
 
 type transfer_from = {
    from_ : address;
-   tx    : atomic_trans list
+   txs   : atomic_trans list
 }
 type transfer = transfer_from list
 
 let transfer : transfer -> storage -> operation list * storage =
    fun (t:transfer) (s:storage) ->
-   (* This function process the "tx" list. Since all transfer share the same "from_" address, we use a se *)
+   (* This function process the "txs" list. Since all transfer share the same "from_" address, we use a se *)
    let process_atomic_transfer (from_:address) (ledger, t:Ledger.t * atomic_trans) =
       let {to_;token_id} = t in
       let ()     = Storage.assert_token_exist s token_id in
@@ -190,8 +190,8 @@ let transfer : transfer -> storage -> operation list * storage =
       ledger
    in
    let process_single_transfer (ledger, t:Ledger.t * transfer_from ) =
-      let {from_;tx} = t in
-      let ledger     = List.fold_left (process_atomic_transfer from_) ledger tx in
+      let {from_;txs} = t in
+      let ledger     = List.fold_left (process_atomic_transfer from_) ledger txs in
       ledger
    in
    let ledger = List.fold_left process_single_transfer s.ledger t in
